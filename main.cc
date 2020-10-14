@@ -296,10 +296,155 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                         }
                     }
                 }
-        
             }
         }
     }
+}
+
+list<Packet> Packets;
+
+void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *data)
+{
+    struct iphdr *iph = (struct iphdr *)(data  + sizeof(struct ethhdr));
+    int header_size = calculateHeaderSize(data, iph);
+
+    bool packetAdd = true;
+
+    string ipSrc;
+	string ipDest;
+	string portSrc;
+    string portDst;
+    fillIpsAndPorts(data, &ipSrc, &ipDest, &portSrc, &portDst);
+
+    if (iph->protocol == 6){
+        if(    (data[header_size] == 0x16 || data[header_size] == 0x17 || data[header_size] == 0x14 || data[header_size] == 0x15) \
+            && (data[header_size+1] == 0x03) \
+            && (data[header_size+2] == 0x00 || data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
+        ){ 
+			if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
+                    Packet packet;
+                    packet.sniRet = calculateSNI(data, header_size+43).c_str(); //skip to session ID Length
+                    fillIpsAndPorts(data, &ipSrc, &ipDest, &portSrc, &portDst);
+                    packet.ipSrc = ipSrc;
+                    packet.ipDest = ipDest;
+                    packet.portSrc = portSrc;
+                    packet.portDst = portDst;  
+                    packet.startedAt = ((header->ts.tv_sec) * 1000 + header->ts.tv_usec/1000.0);                    
+                    packet.dateSeconds = header->ts.tv_sec;
+                    packet.miliSeconds = header->ts.tv_usec;
+                    Packets.push_back(packet);
+			}
+
+            for (auto it = Packets.begin(); it != Packets.end(); it++){
+                if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                    strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                    (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                    strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                    \
+                    ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                    strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                    (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                    strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                {
+                    it->bytes += convertHexLengthBytes(data, header_size);
+                    it->packets++;
+                }
+            }
+
+			for (int j = header_size+5; j < header->caplen; j++){
+                if(    (data[j] == 0x16 || data[j] == 0x17 || data[j] == 0x14 || data[j] == 0x15) \
+            		&& (data[j+1] == 0x03) \
+            		&& (data[j+2] == 0x00 || data[j+2] == 0x01 || data[j+2] == 0x02 || data[j+2] == 0x03 || data[j+2] == 0x04)
+            	){
+                    for (auto it = Packets.begin(); it != Packets.end(); it++){
+                        if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                            strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                            (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                            strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                            \
+                            ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                            strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                            (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                            strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                        {
+                            it->bytes += convertHexLengthBytes(data, j);
+                        }
+                    }
+				}
+            }
+        }
+        else{
+            for (int i = header_size; i < header->caplen; i++){
+                if(    (data[i] == 0x16 || data[i] == 0x17 || data[i] == 0x14 || data[i] == 0x15) \
+                    && (data[i+1] == 0x03) \
+                    && (data[i+2] == 0x00 || data[i+2] == 0x01 || data[i+2] == 0x02 || data[i+2] == 0x03 || data[i+2] == 0x04)
+                ){
+                    for (auto it = Packets.begin(); it != Packets.end(); it++){
+                        if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                            strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                            (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                            strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                            \
+                            ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                            strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                            (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                            strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                        {
+                            it->bytes += convertHexLengthBytes(data, i);
+                        }
+                    }
+
+					if (packetAdd){
+                        for (auto it = Packets.begin(); it != Packets.end(); it++){
+                            if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                                strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                                (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                                strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                                \
+                                ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                                strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                                (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                                strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                            {
+                                it->packets++;
+                            }
+                        }       
+						packetAdd = false;
+					}
+                }
+            }
+        }
+
+        if(data[47] == 0x19 || data[47] == 0x11){
+            for (auto it = Packets.begin(); it != Packets.end(); it++){
+
+                if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                    strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                    (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                    strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                    \
+                    ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                    strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                    (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                    strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                {
+                    it->wasServerFIN++;
+                    if (it->wasServerFIN == 2){
+                        printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, it->startedAt, \
+                                    ((header->ts.tv_sec) * 1000 + header->ts.tv_usec/1000.0), it->dateSeconds, it->miliSeconds);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void liveSniffer(string interface)
+{
+	pcap_t *handle; 
+	char errbuf[PCAP_ERRBUF_SIZE];
+	handle = pcap_open_live(interface.c_str(), 65536, 1, 0, errbuf);
+	pcap_loop(handle, -1, gotPacket, NULL);
 }
 
 int main(int argc, char *argv[])
@@ -329,7 +474,7 @@ int main(int argc, char *argv[])
         if (!strcmp(argv[1], "-i")){
             //todo
             //checkIfInterfaceExists(argv[2])
-            //liveSniffer(argv[2]);
+            liveSniffer(argv[2]);
             return 0;
         }
         else if (!strcmp(argv[1], "-r")){
@@ -350,5 +495,5 @@ int main(int argc, char *argv[])
         fprintf(stderr, "BAD INPUT ARGUMENTS! For help run sniffer with argument -help.\n");
         return -1;
     }
-
 }
+
