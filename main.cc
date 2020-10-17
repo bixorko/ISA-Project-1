@@ -57,6 +57,9 @@ int calculateHeaderSize(const u_char *data, struct iphdr *iph)
 {
     int iphdrlen;
     iphdrlen = iph->ihl*4;
+    if (iph->version == 6){
+        iphdrlen = 40;
+    }
 	struct tcphdr *tcph = (struct tcphdr*)(data + iphdrlen + sizeof(struct ethhdr));	
 	int header_size = sizeof(struct ethhdr) + iphdrlen + tcph->doff*4;
     
@@ -138,6 +141,32 @@ void fillIpsAndPorts(const u_char *data, string *ipSrc, string *ipDest, string *
     *portDst = std::to_string(portDestination);
 }
 
+string convertIPv6(const u_char *data, int offset)
+{
+    char buffer[64];
+	sprintf (buffer, "%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x:%.2x%.2x", data[offset+1], data[offset+2],
+    data[offset+3],data[offset+4],data[offset+5],data[offset+6],data[offset+7],data[offset+8],data[offset+9],data[offset+10],data[offset+11],data[offset+12],
+    data[offset+13],data[offset+14], data[offset+15], data[offset+16]);
+
+    char *ip6str = buffer;
+    struct in6_addr result;
+    char toReturn[64];
+
+    inet_pton(AF_INET6, ip6str, &result);
+    inet_ntop(AF_INET6, &(result), toReturn, 64);
+    return toReturn;
+}
+
+void fillIpsAndPorts6(const u_char *data, string *ipSrc, string *ipDest, string *portSrc, string *portDst)
+{
+    *ipSrc = convertIPv6(data, 21);
+    *ipDest = convertIPv6(data, 37);
+	int portSource = convertHexPort(data, 54);
+	*portSrc = std::to_string(portSource);
+    int portDestination = convertHexPort(data, 56);
+    *portDst = std::to_string(portDestination);
+}
+
 void printPacket(int *bytes, int *packets, string *sni, string *ipSrc, string *ipDest, string *portSrc, unsigned long int startedAt, unsigned long int endedAt, int dateSeconds, int miliSeconds)
 {
     char Date[11];
@@ -179,9 +208,21 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
         int offset = 0;
 
         bool packetAdd = true;
-        fillIpsAndPorts(data, ipSrc, ipDest, portSrc, portDst);
 
-        if (iph->protocol == 6){
+        if (iph->version == 6){
+            fillIpsAndPorts6(data, ipSrc, ipDest, portSrc, portDst);
+        }
+        else{
+            fillIpsAndPorts(data, ipSrc, ipDest, portSrc, portDst);
+        }
+
+        int controlTCP = iph->protocol;
+
+        if (iph->version == 6 && data[20] == 0x06){
+            controlTCP = 6;
+        }
+
+        if (controlTCP){
             if(    (data[header_size] == 0x16 || data[header_size] == 0x17 || data[header_size] == 0x14 || data[header_size] == 0x15) \
                 && (data[header_size+1] == 0x03) \
                 && (data[header_size+2] == 0x00 || data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
@@ -189,7 +230,12 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
 				if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
                         Packet packet;
                         packet.sniRet = calculateSNI(data, header_size+43).c_str(); //skip to session ID Length
-                        fillIpsAndPorts(data, ipSrc, ipDest, portSrc, portDst);
+                        if (iph->version == 6){
+                            fillIpsAndPorts6(data, ipSrc, ipDest, portSrc, portDst);
+                        }
+                        else{
+                            fillIpsAndPorts(data, ipSrc, ipDest, portSrc, portDst);
+                        }
                         packet.ipSrc = *ipSrc;
                         packet.ipDest = *ipDest;
                         packet.portSrc = *portSrc;
@@ -304,9 +350,8 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                 }
             }
 
-            if(data[47] == 0x19 || data[47] == 0x11){
+            if((data[47] == 0x19 || data[47] == 0x11) || (data[67] == 0x11 && iph->version == 6 && data[20] == 0x06)){
                 for (auto it = Packets.begin(); it != Packets.end(); it++){
-
                     if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
                         strcmp(ipSrc->c_str(), it->ipDest.c_str()) == 0) && \
                         (strcmp(ipDest->c_str(), it->ipDest.c_str()) == 0 || \
@@ -345,9 +390,20 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
 	string ipDest;
 	string portSrc;
     string portDst;
-    fillIpsAndPorts(data, &ipSrc, &ipDest, &portSrc, &portDst);
+    if (iph->version == 6){
+        fillIpsAndPorts6(data, &ipSrc, &ipDest, &portSrc, &portDst);
+    }
+    else{
+        fillIpsAndPorts(data, &ipSrc, &ipDest, &portSrc, &portDst);
+    }
 
-    if (iph->protocol == 6){
+    int controlTCP = iph->protocol;
+
+    if (iph->version == 6 && data[20] == 0x06){
+        controlTCP = 6;
+    }
+
+    if (controlTCP){
         if(    (data[header_size] == 0x16 || data[header_size] == 0x17 || data[header_size] == 0x14 || data[header_size] == 0x15) \
             && (data[header_size+1] == 0x03) \
             && (data[header_size+2] == 0x00 || data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
@@ -355,7 +411,12 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
 			if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
                     Packet packet;
                     packet.sniRet = calculateSNI(data, header_size+43).c_str(); //skip to session ID Length
-                    fillIpsAndPorts(data, &ipSrc, &ipDest, &portSrc, &portDst);
+                    if (iph->version == 6){
+                        fillIpsAndPorts6(data, &ipSrc, &ipDest, &portSrc, &portDst);
+                    }
+                    else{
+                        fillIpsAndPorts(data, &ipSrc, &ipDest, &portSrc, &portDst);
+                    }
                     packet.ipSrc = ipSrc;
                     packet.ipDest = ipDest;
                     packet.portSrc = portSrc;
@@ -469,7 +530,7 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
             }
         }
 
-        if(data[47] == 0x19 || data[47] == 0x11){
+        if((data[47] == 0x19 || data[47] == 0x11) || (data[67] == 0x11 && iph->version == 6 && data[20] == 0x06)){
             for (auto it = Packets.begin(); it != Packets.end(); it++){
 
                 if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
