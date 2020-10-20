@@ -223,28 +223,55 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
         }
 
         if (controlTCP){
+            for (auto it = Packets.begin(); it != Packets.end(); it++){
+                if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
+                    strcmp(ipSrc->c_str(), it->ipDest.c_str()) == 0) && \
+                    (strcmp(ipDest->c_str(), it->ipDest.c_str()) == 0 || \
+                    strcmp(ipDest->c_str(), it->ipSrc.c_str()) == 0)) && \
+                    \
+                    ((strcmp(portSrc->c_str(), it->portSrc.c_str()) == 0 || \
+                    strcmp(portSrc->c_str(), it->portDst.c_str()) == 0) && \
+                    (strcmp(portDst->c_str(), it->portDst.c_str()) == 0 || \
+                    strcmp(portDst->c_str(), it->portSrc.c_str()) == 0)))
+                {
+                    it->packets++;
+                    packetAdd = false;
+                }
+            }
+
+            if (packetAdd || Packets.empty()){
+                Packet packet;
+                packet.ipSrc = *ipSrc;
+                packet.ipDest = *ipDest;
+                packet.portSrc = *portSrc;
+                packet.portDst = *portDst;  
+                packet.packets = 1;
+                packet.startedAt = ((header->ts.tv_sec) * 1000000 + header->ts.tv_usec);                    
+                packet.dateSeconds = header->ts.tv_sec;
+                packet.miliSeconds = header->ts.tv_usec;
+                Packets.push_back(packet);
+            }
+
             if(    (data[header_size] == 0x16 || data[header_size] == 0x17 || data[header_size] == 0x14 || data[header_size] == 0x15) \
                 && (data[header_size+1] == 0x03) \
                 && (data[header_size+2] == 0x00 || data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
             ){ 
 				if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
-                        Packet packet;
-                        packet.sniRet = calculateSNI(data, header_size+43).c_str(); //skip to session ID Length
-                        if (iph->version == 6){
-                            fillIpsAndPorts6(data, ipSrc, ipDest, portSrc, portDst);
+                        for (auto it = Packets.begin(); it != Packets.end(); it++){
+                        if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
+                            strcmp(ipSrc->c_str(), it->ipDest.c_str()) == 0) && \
+                            (strcmp(ipDest->c_str(), it->ipDest.c_str()) == 0 || \
+                            strcmp(ipDest->c_str(), it->ipSrc.c_str()) == 0)) && \
+                            \
+                            ((strcmp(portSrc->c_str(), it->portSrc.c_str()) == 0 || \
+                            strcmp(portSrc->c_str(), it->portDst.c_str()) == 0) && \
+                            (strcmp(portDst->c_str(), it->portDst.c_str()) == 0 || \
+                            strcmp(portDst->c_str(), it->portSrc.c_str()) == 0)))
+                        {
+                            it->wasHello = true;
+                            it->sniRet = calculateSNI(data, header_size+43).c_str(); //skip to session ID Length
                         }
-                        else{
-                            fillIpsAndPorts(data, ipSrc, ipDest, portSrc, portDst);
-                        }
-                        packet.ipSrc = *ipSrc;
-                        packet.ipDest = *ipDest;
-                        packet.portSrc = *portSrc;
-                        packet.portDst = *portDst;  
-                        packet.startedAt = ((header->ts.tv_sec) * 1000000 + header->ts.tv_usec);                    
-                        packet.dateSeconds = header->ts.tv_sec;
-                        packet.miliSeconds = header->ts.tv_usec;
-                        packet.wasHello = true;
-                        Packets.push_back(packet);
+                    }
 				}
 
                 if(data[header_size] == 0x16 && data[header_size+5] == 0x02){
@@ -279,7 +306,6 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                     {
 
                         it->bytes += convertHexLengthBytes(data, header_size);
-                        it->packets++;
                         offset += convertHexLengthBytes(data, header_size);
                     }
                 }
@@ -328,24 +354,6 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                                 offset += 5 + convertHexLengthBytes(data, i);
                             }
                         }
-	
-						if (packetAdd){
-                            for (auto it = Packets.begin(); it != Packets.end(); it++){
-                                if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
-                                    strcmp(ipSrc->c_str(), it->ipDest.c_str()) == 0) && \
-                                    (strcmp(ipDest->c_str(), it->ipDest.c_str()) == 0 || \
-                                    strcmp(ipDest->c_str(), it->ipSrc.c_str()) == 0)) && \
-                                    \
-                                    ((strcmp(portSrc->c_str(), it->portSrc.c_str()) == 0 || \
-                                    strcmp(portSrc->c_str(), it->portDst.c_str()) == 0) && \
-                                    (strcmp(portDst->c_str(), it->portDst.c_str()) == 0 || \
-                                    strcmp(portDst->c_str(), it->portSrc.c_str()) == 0)))
-                                {
-                                    it->packets++;
-                                }
-                            }       
-							packetAdd = false;
-						}
                     }
                 }
             }
@@ -404,28 +412,56 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
     }
 
     if (controlTCP){
+
+        for (auto it = Packets.begin(); it != Packets.end(); it++){
+                if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                    strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                    (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                    strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                    \
+                    ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                    strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                    (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                    strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                {
+                    it->packets++;
+                    packetAdd = false;
+                }
+            }
+
+            if (packetAdd || Packets.empty()){
+                Packet packet;
+                packet.ipSrc = ipSrc;
+                packet.ipDest = ipDest;
+                packet.portSrc = portSrc;
+                packet.portDst = portDst;  
+                packet.packets = 1;
+                packet.startedAt = ((header->ts.tv_sec) * 1000000 + header->ts.tv_usec);                    
+                packet.dateSeconds = header->ts.tv_sec;
+                packet.miliSeconds = header->ts.tv_usec;
+                Packets.push_back(packet);
+            }
+
         if(    (data[header_size] == 0x16 || data[header_size] == 0x17 || data[header_size] == 0x14 || data[header_size] == 0x15) \
             && (data[header_size+1] == 0x03) \
             && (data[header_size+2] == 0x00 || data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
         ){ 
 			if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
-                    Packet packet;
-                    packet.sniRet = calculateSNI(data, header_size+43).c_str(); //skip to session ID Length
-                    if (iph->version == 6){
-                        fillIpsAndPorts6(data, &ipSrc, &ipDest, &portSrc, &portDst);
+                    for (auto it = Packets.begin(); it != Packets.end(); it++){
+                        if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                            strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                            (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                            strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                            \
+                            ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                            strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                            (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                            strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                        {
+                            it->wasHello = true;
+                            it->sniRet = calculateSNI(data, header_size+43).c_str(); //skip to session ID Length
+                        }
                     }
-                    else{
-                        fillIpsAndPorts(data, &ipSrc, &ipDest, &portSrc, &portDst);
-                    }
-                    packet.ipSrc = ipSrc;
-                    packet.ipDest = ipDest;
-                    packet.portSrc = portSrc;
-                    packet.portDst = portDst;  
-                    packet.startedAt = ((header->ts.tv_sec) * 1000000 + header->ts.tv_usec);                    
-                    packet.dateSeconds = header->ts.tv_sec;
-                    packet.miliSeconds = header->ts.tv_usec;
-                    packet.wasHello = true;
-                    Packets.push_back(packet);
 			}
 
             if(data[header_size] == 0x16 && data[header_size+5] == 0x02){
@@ -459,7 +495,6 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                     strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
                 {
                     it->bytes += convertHexLengthBytes(data, header_size);
-                    it->packets++;
                     offset += convertHexLengthBytes(data, header_size);
                 }
             }
@@ -508,24 +543,6 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                             offset += 5 + convertHexLengthBytes(data, i);
                         }
                     }
-
-					if (packetAdd){
-                        for (auto it = Packets.begin(); it != Packets.end(); it++){
-                            if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
-                                strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
-                                (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
-                                strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
-                                \
-                                ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
-                                strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
-                                (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
-                                strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
-                            {
-                                it->packets++;
-                            }
-                        }       
-						packetAdd = false;
-					}
                 }
             }
         }
