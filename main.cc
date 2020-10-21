@@ -167,7 +167,7 @@ void fillIpsAndPorts6(const u_char *data, string *ipSrc, string *ipDest, string 
     *portDst = std::to_string(portDestination);
 }
 
-void printPacket(int *bytes, int *packets, string *sni, string *ipSrc, string *ipDest, string *portSrc, unsigned long int startedAt, unsigned long int endedAt, int dateSeconds, int miliSeconds)
+void printPacket(int *bytes, int *packets, string *sni, string *ipSrc, string *ipDest, string *portSrc, int dateSeconds, int miliSeconds, struct timeval startTime, struct timeval endTime)
 {
     char Date[11];
 	time_t ts = dateSeconds; 
@@ -175,12 +175,22 @@ void printPacket(int *bytes, int *packets, string *sni, string *ipSrc, string *i
     strftime(Date, sizeof Date, "%Y-%m-%d", local);
 
     printf("%s %02d:%02d:%02d.%06d,", Date, local->tm_hour, local->tm_min, local->tm_sec, miliSeconds);
-    printf("%s,%s,%s,%s,%d,%d,%.6f\n", ipSrc->c_str(), portSrc->c_str(), ipDest->c_str(), sni->c_str(), *bytes, *packets, (float)(endedAt - startedAt)/1000000);
+
+    struct timeval duration;
+    duration.tv_sec = endTime.tv_sec - startTime.tv_sec;
+    duration.tv_usec = endTime.tv_usec - startTime.tv_usec;
+
+    while(duration.tv_usec<0){
+        duration.tv_sec -= 1;
+        duration.tv_usec += 1000000;
+    }
+    printf("%s,%s,%s,%s,%d,%d,%ld.%06lu\n", ipSrc->c_str(), portSrc->c_str(), ipDest->c_str(), sni->c_str(), *bytes, *packets, duration.tv_sec, (unsigned long)duration.tv_usec);
+
 }
 
 struct Packet
 { 
-    unsigned long int startedAt;
+    struct timeval startTime;
     int wasServerFIN = 0;
     string sniRet;
     int packets = 0;
@@ -190,6 +200,9 @@ struct Packet
     string ipSrc, ipDest, portSrc, portDst;
     bool wasHello = false;
     bool isPrintable = false; //set to true if client hello and server hello arrived (they also must arrived -> first client then server)
+    string whoFINip;
+    string whoFINport;
+    bool isSameIP = false;
 };  
 
 void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ipSrc, string *ipDest, string *portSrc, string *portDst)
@@ -200,12 +213,13 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
     const u_char *data;
 
     list<Packet> Packets;
+
  
     while (int returnValue = pcap_next_ex(pcap, &header, &data) >= 0){
         struct iphdr *iph = (struct iphdr *)(data  + sizeof(struct ethhdr));
         int header_size = calculateHeaderSize(data, iph);
 
-        int offset = 0;
+        int offset = header_size;
 
         bool packetAdd = true;
 
@@ -245,16 +259,21 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                 packet.ipDest = *ipDest;
                 packet.portSrc = *portSrc;
                 packet.portDst = *portDst;  
-                packet.packets = 1;
-                packet.startedAt = ((header->ts.tv_sec) * 1000000 + header->ts.tv_usec);                    
+
+                if (strcmp(ipSrc->c_str(), ipDest->c_str()) == 0){
+                    packet.isSameIP = true;
+                }
+                packet.packets = 1;                  
                 packet.dateSeconds = header->ts.tv_sec;
                 packet.miliSeconds = header->ts.tv_usec;
+                packet.startTime.tv_sec = header->ts.tv_sec;
+                packet.startTime.tv_usec = header->ts.tv_usec;
                 Packets.push_back(packet);
             }
 
             if(    (data[header_size] == 0x16 || data[header_size] == 0x17 || data[header_size] == 0x14 || data[header_size] == 0x15) \
                 && (data[header_size+1] == 0x03) \
-                && (data[header_size+2] == 0x00 || data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
+                && (data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
             ){ 
 				if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
                         for (auto it = Packets.begin(); it != Packets.end(); it++){
@@ -304,16 +323,14 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                         (strcmp(portDst->c_str(), it->portDst.c_str()) == 0 || \
                         strcmp(portDst->c_str(), it->portSrc.c_str()) == 0)))
                     {
-
                         it->bytes += convertHexLengthBytes(data, header_size);
                         offset += convertHexLengthBytes(data, header_size);
                     }
                 }
-
-				for (int j = header_size+5+offset; j < header->caplen; j++){
+				for (int j = offset+5; j < header->caplen; j++){
                     if(    (data[j] == 0x16 || data[j] == 0x17 || data[j] == 0x14 || data[j] == 0x15) \
                 		&& (data[j+1] == 0x03) \
-                		&& (data[j+2] == 0x00 || data[j+2] == 0x01 || data[j+2] == 0x02 || data[j+2] == 0x03 || data[j+2] == 0x04)
+                		&& (data[j+2] == 0x01 || data[j+2] == 0x02 || data[j+2] == 0x03 || data[j+2] == 0x04)
             		){
                         for (auto it = Packets.begin(); it != Packets.end(); it++){
                             if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
@@ -328,6 +345,7 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                             {
                                 it->bytes += convertHexLengthBytes(data, j);
                                 offset += 5 + convertHexLengthBytes(data, j);
+                                j = offset;
                             }
                         }
 					}
@@ -337,7 +355,7 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                 for (int i = offset; i < header->caplen; i++){
                     if(    (data[i] == 0x16 || data[i] == 0x17 || data[i] == 0x14 || data[i] == 0x15) \
                         && (data[i+1] == 0x03) \
-                        && (data[i+2] == 0x00 || data[i+2] == 0x01 || data[i+2] == 0x02 || data[i+2] == 0x03 || data[i+2] == 0x04)
+                        && (data[i+2] == 0x01 || data[i+2] == 0x02 || data[i+2] == 0x03 || data[i+2] == 0x04)
                     ){
                         for (auto it = Packets.begin(); it != Packets.end(); it++){
                             if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
@@ -351,7 +369,7 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                                 strcmp(portDst->c_str(), it->portSrc.c_str()) == 0)))
                             {
                                 it->bytes += convertHexLengthBytes(data, i);
-                                offset += 5 + convertHexLengthBytes(data, i);
+                                offset += 5 + convertHexLengthBytes(data, i);          
                             }
                         }
                     }
@@ -371,10 +389,23 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                         strcmp(portDst->c_str(), it->portSrc.c_str()) == 0)))
                     {
                         it->wasServerFIN++;
+                        if (it->wasServerFIN == 1){
+                            it->whoFINip = *ipSrc;
+                            it->whoFINport = *portSrc;
+                        }
+
                         if (it->wasServerFIN == 2){
-                            if (it->isPrintable){
-                                printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, it->startedAt, \
-                                            ((header->ts.tv_sec) * 1000000 + header->ts.tv_usec), it->dateSeconds, it->miliSeconds);
+                            if ((it->whoFINip != *ipSrc && it->whoFINport != *portSrc) || (it->isSameIP && it->whoFINport != *portSrc)){
+                                if (it->isPrintable){
+                                    struct timeval endTime;
+                                    endTime.tv_sec = header->ts.tv_sec;
+                                    endTime.tv_usec = header->ts.tv_usec;
+                                    printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, \
+                                                it->dateSeconds, it->miliSeconds, it->startTime, endTime);
+                                }
+                            }
+                            else{
+                                it->wasServerFIN = 1;
                             }
                         }
                     }
@@ -435,10 +466,11 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                 packet.ipDest = ipDest;
                 packet.portSrc = portSrc;
                 packet.portDst = portDst;  
-                packet.packets = 1;
-                packet.startedAt = ((header->ts.tv_sec) * 1000000 + header->ts.tv_usec);                    
+                packet.packets = 1;                  
                 packet.dateSeconds = header->ts.tv_sec;
                 packet.miliSeconds = header->ts.tv_usec;
+                packet.startTime.tv_sec = header->ts.tv_sec;
+                packet.startTime.tv_usec = header->ts.tv_usec;
                 Packets.push_back(packet);
             }
 
@@ -563,8 +595,11 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                     it->wasServerFIN++;
                     if (it->wasServerFIN == 2){
                         if (it->isPrintable){
-                            printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, it->startedAt, \
-                                        ((header->ts.tv_sec) * 1000000 + header->ts.tv_usec), it->dateSeconds, it->miliSeconds);
+                            struct timeval endTime;
+                            endTime.tv_sec = header->ts.tv_sec;
+                            endTime.tv_usec = header->ts.tv_usec;
+                            printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, \
+                                        it->dateSeconds, it->miliSeconds, it->startTime, endTime);
                         }
                     }
                 }
