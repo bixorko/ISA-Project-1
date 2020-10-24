@@ -223,9 +223,8 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
         struct iphdr *iph = (struct iphdr *)(data  + sizeof(struct ethhdr));
         int header_size = calculateHeaderSize(data, iph);
 
-        int offset = header_size;
-
         bool packetAdd = true;
+        int offset = header_size;
 
         if (iph->version == 6){
             fillIpsAndPorts6(data, ipSrc, ipDest, portSrc, portDst);
@@ -332,7 +331,6 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                     }
                 }
 				for (int j = offset+5; j < header->caplen; j++){
-                    bool breakThis = false;
                     if(    (data[j] == 0x16 || data[j] == 0x17 || data[j] == 0x14 || data[j] == 0x15) \
                 		&& (data[j+1] == 0x03) \
                 		&& (data[j+2] == 0x01 || data[j+2] == 0x02 || data[j+2] == 0x03 || data[j+2] == 0x04)
@@ -443,7 +441,7 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
     int header_size = calculateHeaderSize(data, iph);
 
     bool packetAdd = true;
-    int offset = 0;
+    int offset = header_size;
 
     string ipSrc;
 	string ipDest;
@@ -463,7 +461,6 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
     }
 
     if (controlTCP){
-
         for (auto it = Packets.begin(); it != Packets.end(); it++){
                 if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
                     strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
@@ -486,6 +483,10 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                 packet.ipDest = ipDest;
                 packet.portSrc = portSrc;
                 packet.portDst = portDst;  
+
+                if (strcmp(ipSrc.c_str(), ipDest.c_str()) == 0){
+                    packet.isSameIP = true;
+                }
                 packet.packets = 1;                  
                 packet.dateSeconds = header->ts.tv_sec;
                 packet.miliSeconds = header->ts.tv_usec;
@@ -551,7 +552,7 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                 }
             }
 
-			for (int j = header_size+5+offset; j < header->caplen; j++){
+			for (int j = offset+5; j < header->caplen; j++){
                 if(    (data[j] == 0x16 || data[j] == 0x17 || data[j] == 0x14 || data[j] == 0x15) \
             		&& (data[j+1] == 0x03) \
             		&& (data[j+2] == 0x00 || data[j+2] == 0x01 || data[j+2] == 0x02 || data[j+2] == 0x03 || data[j+2] == 0x04)
@@ -569,17 +570,23 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                         {
                             it->bytes += convertHexLengthBytes(data, j);
                             offset += 5 + convertHexLengthBytes(data, j);
+                            j = offset;
                         }
                     }
 				}
             }
         }
         else{
+            bool wasAppData = false;
             for (int i = offset; i < header->caplen; i++){
+                bool breakThis = false;
                 if(    (data[i] == 0x16 || data[i] == 0x17 || data[i] == 0x14 || data[i] == 0x15) \
                     && (data[i+1] == 0x03) \
                     && (data[i+2] == 0x00 || data[i+2] == 0x01 || data[i+2] == 0x02 || data[i+2] == 0x03 || data[i+2] == 0x04)
                 ){
+                    if (data[i] == 0x17){
+                            wasAppData = true;
+                    }
                     for (auto it = Packets.begin(); it != Packets.end(); it++){
                         if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
                             strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
@@ -591,17 +598,26 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                             (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
                             strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
                         {
+                            if (wasAppData && data[i] == 0x14){
+                                    break;
+                                }
+                            if ((header->caplen - i) <= 4){
+                                breakThis = true;
+                                break;
+                            }
                             it->bytes += convertHexLengthBytes(data, i);
                             offset += 5 + convertHexLengthBytes(data, i);
                         }
                     }
                 }
+                if (offset > header->caplen || breakThis){
+                    break;                
+                } 
             }
         }
 
         if((data[47] == 0x19 || data[47] == 0x11) || (data[67] == 0x11 && iph->version == 6 && data[20] == 0x06)){
             for (auto it = Packets.begin(); it != Packets.end(); it++){
-
                 if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
                     strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
                     (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
@@ -613,13 +629,23 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                     strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
                 {
                     it->wasServerFIN++;
+                    if (it->wasServerFIN == 1){
+                        it->whoFINip = ipSrc;
+                        it->whoFINport = portSrc;
+                    }
+
                     if (it->wasServerFIN == 2){
-                        if (it->isPrintable){
-                            struct timeval endTime;
-                            endTime.tv_sec = header->ts.tv_sec;
-                            endTime.tv_usec = header->ts.tv_usec;
-                            printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, \
-                                        it->dateSeconds, it->miliSeconds, it->startTime, endTime);
+                        if ((it->whoFINip != ipSrc && it->whoFINport != portSrc) || (it->isSameIP && it->whoFINport != portSrc)){
+                                if (it->isPrintable){
+                                struct timeval endTime;
+                                endTime.tv_sec = header->ts.tv_sec;
+                                endTime.tv_usec = header->ts.tv_usec;
+                                printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, \
+                                            it->dateSeconds, it->miliSeconds, it->startTime, endTime);
+                            }
+                        }
+                        else{
+                            it->wasServerFIN = 1;
                         }
                     }
                 }
