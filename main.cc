@@ -128,6 +128,10 @@ string calculateSNI(const u_char *data, int header_size)
 		sni += toAdd[0];
 	}
 
+    if (strcmp(sni.c_str(),"\n") == 0){
+        return "";
+    }
+
 	return sni;
 }
 
@@ -328,6 +332,7 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                     }
                 }
 				for (int j = offset+5; j < header->caplen; j++){
+                    bool breakThis = false;
                     if(    (data[j] == 0x16 || data[j] == 0x17 || data[j] == 0x14 || data[j] == 0x15) \
                 		&& (data[j+1] == 0x03) \
                 		&& (data[j+2] == 0x01 || data[j+2] == 0x02 || data[j+2] == 0x03 || data[j+2] == 0x04)
@@ -352,11 +357,16 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                 }
             }
             else{
+                bool wasAppData = false;
                 for (int i = offset; i < header->caplen; i++){
+                    bool breakThis = false;
                     if(    (data[i] == 0x16 || data[i] == 0x17 || data[i] == 0x14 || data[i] == 0x15) \
                         && (data[i+1] == 0x03) \
                         && (data[i+2] == 0x01 || data[i+2] == 0x02 || data[i+2] == 0x03 || data[i+2] == 0x04)
                     ){
+                        if (data[i] == 0x17){
+                            wasAppData = true;
+                        }
                         for (auto it = Packets.begin(); it != Packets.end(); it++){
                             if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
                                 strcmp(ipSrc->c_str(), it->ipDest.c_str()) == 0) && \
@@ -368,11 +378,21 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                                 (strcmp(portDst->c_str(), it->portDst.c_str()) == 0 || \
                                 strcmp(portDst->c_str(), it->portSrc.c_str()) == 0)))
                             {
+                                if (wasAppData && data[i] == 0x14){
+                                    break;
+                                }
+                                if ((header->caplen - i) <= 4){
+                                    breakThis = true;
+                                    break;
+                                }
                                 it->bytes += convertHexLengthBytes(data, i);
-                                offset += 5 + convertHexLengthBytes(data, i);          
+                                offset += 5 + convertHexLengthBytes(data, i);
                             }
                         }
                     }
+                    if (offset > header->caplen || breakThis){
+                        break;                
+                    } 
                 }
             }
 
