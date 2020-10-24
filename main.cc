@@ -114,12 +114,16 @@ string calculateSNI(const u_char *data, int header_size)
 	length += convertHexLengthMethods(data, header_size+length);
 	length += 1;
 	length += 2;
+    if (data[header_size+length+1] != 0x00){
+        length += 4;
+    }
 	length += 2;
 	length += 2;
 	length += 2;
 	length += 1;
 	int nameLength = convertHexLengthCipher(data, header_size+length); 
 	length += 2;
+    
 
 	char toAdd[1];
 	string sni;
