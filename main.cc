@@ -66,6 +66,14 @@ int calculateHeaderSize(const u_char *data, struct iphdr *iph)
     return header_size;
 }
 
+/**
+ * FUNCTIONS BELOW TAKE PARAMETERS DATA WHICH MEANS PAYLOAD FROM PACKET
+ * AND INDEX J, WHICH MEAN FROM WHICH INDEX WE HAVE TO START ->
+ * TRANSFORMING HEX BYTES INTO DECIMAL VALUES (for example if we want to add number of bytes to specific communication
+ * firstly we have to transform it to right format (decimal value) and secondly after that we could easily add this value to 
+ * this communication)
+ */
+
 int convertHexLengthBytes(const u_char *data, int j)
 {
 	char buffer[5];
@@ -165,6 +173,10 @@ string convertIPv6(const u_char *data, int offset)
     return toReturn;
 }
 
+/**
+ * takes specific bytes from packet and fills ports and ips from specific communication
+ */
+
 void fillIpsAndPorts6(const u_char *data, string *ipSrc, string *ipDest, string *portSrc, string *portDst)
 {
     *ipSrc = convertIPv6(data, 21);
@@ -174,6 +186,10 @@ void fillIpsAndPorts6(const u_char *data, string *ipSrc, string *ipDest, string 
     int portDestination = convertHexPort(data, 56);
     *portDst = std::to_string(portDestination);
 }
+
+/**
+ * This function is called whenever we want to print connection to standard outpuut
+ */
 
 void printPacket(int *bytes, int *packets, string *sni, string *ipSrc, string *ipDest, string *portSrc, int dateSeconds, int miliSeconds, struct timeval startTime, struct timeval endTime)
 {
@@ -196,6 +212,21 @@ void printPacket(int *bytes, int *packets, string *sni, string *ipSrc, string *i
 
 }
 
+/**
+ * Each communication is stored in one struct Packet in list of Packets
+ * it stores informations about communication
+ * one communication has: 
+ * startTime -> when communication started (From first packet of connection)
+ * wasServerFIN -> calculates if Client / Server FIN arrived
+ * sniRet -> value for store SNI name
+ * packets -> count of packets of given communication [FROM ALL TCP PACKETS]
+ * bytes -> count of bytes of given communication [ONLY FROM SSL PACKETS]
+ * dateSeconds, miliSeconds -> for calcualte endtime and actuall time of packet
+ * ipSrc, ipDest, portSrc, portDst -> head informations about communication (so we know to which communication we ahve to add packet / bytes)
+ * wasHello -> boolean for cotrnol, if Client and Server Hello arrived -> if not, packet is deleted
+ * isPrintable -> boolean value which is set to true when handshake is completed
+ */
+
 struct Packet
 { 
     struct timeval startTime;
@@ -212,6 +243,18 @@ struct Packet
     string whoFINport;
     bool isSameIP = false;
 };  
+
+/**
+ * This function is called whenever new packet arrives FROM FILE and we have to process him
+ * it calculates version of packet, SNI,
+ * it stores packets in list of Packets with struct Packet (include src port, dest port, ip etc.)
+ * packet length is calcualted  only from SSL packets length
+ * and the count of packets is calcualted from all TCP packets from specific communication.
+ * Variables in function are selfexplanatory 
+ * redundance of code is there when i have to control from which communication packet arrived (8 rows if)
+ * other cases are pretty easy to understand from code
+ * MORE ABOUT COMMUNICATION STORING IS ABOVE STRUCT PACKET
+ */
 
 void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ipSrc, string *ipDest, string *portSrc, string *portDst)
 {
@@ -439,6 +482,18 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
 
 list<Packet> Packets;
 
+/**
+ * This function is called whenever new packet arrives DURING LIVE SNIFFING and we have to process him
+ * it calculates version of packet, SNI,
+ * it stores packets in list of Packets with struct Packet (include src port, dest port, ip etc.)
+ * packet length is calcualted  only from SSL packets length
+ * and the count of packets is calcualted from all TCP packets from specific communication.
+ * Variables in function are selfexplanatory 
+ * redundance of code is there when i have to control from which communication packet arrived (8 rows if)
+ * other cases are pretty easy to understand from code
+ * MORE ABOUT COMMUNICATION STORING IS ABOVE STRUCT PACKET
+ */
+
 void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *data)
 {
     struct iphdr *iph = (struct iphdr *)(data  + sizeof(struct ethhdr));
@@ -658,6 +713,12 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
     }
 }
 
+/**
+ * run interface in infinity loop
+ * and function for packet process is called 
+ * everytime new packet arrives
+ */
+
 void liveSniffer(string interface)
 {
 	pcap_t *handle; 
@@ -665,6 +726,32 @@ void liveSniffer(string interface)
 	handle = pcap_open_live(interface.c_str(), 65536, 1, 0, errbuf);
 	pcap_loop(handle, -1, gotPacket, NULL);
 }
+
+/**
+ * function checks if given interface exists
+ * if not, then it returns 0
+ * else it returns 1
+ */
+
+int checkIfInterfaceExists(char *devices)
+{
+    pcap_if_t *devicesP , *device;
+    bool founded = false;
+	char errbuf[PCAP_ERRBUF_SIZE];
+	pcap_findalldevs(&devicesP, errbuf);
+    for(device = devicesP; device != NULL ;device = device->next)
+	{
+		if (!strcmp(device->name, devices)){
+            founded = true;
+        }
+	}
+    if (founded){
+        return 1;
+    }
+
+    return 0;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -691,8 +778,10 @@ int main(int argc, char *argv[])
     }
     else if (argc == 3){
         if (!strcmp(argv[1], "-i")){
-            //todo
-            //checkIfInterfaceExists(argv[2])
+            if (!checkIfInterfaceExists(argv[2])){
+                fprintf(stderr, "INTERFACE DOESN'T EXISTS! For help run sniffer with argument -help.\n");
+                return -1;
+            }
             liveSniffer(argv[2]);
             return 0;
         }
