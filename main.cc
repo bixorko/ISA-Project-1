@@ -556,7 +556,7 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
 
         if(    (data[header_size] == 0x16 || data[header_size] == 0x17 || data[header_size] == 0x14 || data[header_size] == 0x15) \
             && (data[header_size+1] == 0x03) \
-            && (data[header_size+2] == 0x00 || data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
+            && (data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
         ){ 
 			if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
                     for (auto it = Packets.begin(); it != Packets.end(); it++){
@@ -614,7 +614,7 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
 			for (int j = offset+5; j < header->caplen; j++){
                 if(    (data[j] == 0x16 || data[j] == 0x17 || data[j] == 0x14 || data[j] == 0x15) \
             		&& (data[j+1] == 0x03) \
-            		&& (data[j+2] == 0x00 || data[j+2] == 0x01 || data[j+2] == 0x02 || data[j+2] == 0x03 || data[j+2] == 0x04)
+            		&& (data[j+2] == 0x01 || data[j+2] == 0x02 || data[j+2] == 0x03 || data[j+2] == 0x04)
             	){
                     for (auto it = Packets.begin(); it != Packets.end(); it++){
                         if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
@@ -641,7 +641,7 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                 bool breakThis = false;
                 if(    (data[i] == 0x16 || data[i] == 0x17 || data[i] == 0x14 || data[i] == 0x15) \
                     && (data[i+1] == 0x03) \
-                    && (data[i+2] == 0x00 || data[i+2] == 0x01 || data[i+2] == 0x02 || data[i+2] == 0x03 || data[i+2] == 0x04)
+                    && (data[i+2] == 0x01 || data[i+2] == 0x02 || data[i+2] == 0x03 || data[i+2] == 0x04)
                 ){
                     if (data[i] == 0x17){
                             wasAppData = true;
