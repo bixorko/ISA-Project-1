@@ -706,6 +706,32 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
             }
         }
 
+        if((data[47] == 0x14 || data[47] == 0x04) || ((data[67] == 0x14 || data[67] == 0x04) && iph->version == 6 && data[20] == 0x06)){
+                for (auto it = Packets.begin(); it != Packets.end(); it++){
+                    if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                        strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                        (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                        strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                        \
+                        ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                        strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                        (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                        strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                    {
+                        if (it->isPrintable){
+                            struct timeval endTime;
+                            endTime.tv_sec = header->ts.tv_sec;
+                            endTime.tv_usec = header->ts.tv_usec;
+                            if (it->bytes != 0 && it->wasAlreadyPrinted == false){
+                                printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, \
+                                            it->dateSeconds, it->miliSeconds, it->startTime, endTime);
+                            }
+                        }
+                        it->wasAlreadyPrinted = true;
+                    }
+                }
+            }
+
         if((data[47] == 0x19 || data[47] == 0x11) || (data[67] == 0x11 && iph->version == 6 && data[20] == 0x06)){
             for (auto it = Packets.begin(); it != Packets.end(); it++){
                 if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
@@ -724,9 +750,10 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
                         it->whoFINport = portSrc;
                     }
 
-                    if (it->wasServerFIN == 2){
+                    if (it->wasServerFIN == 2 && it->wasAlreadyPrinted == false){
                         if ((it->whoFINip != ipSrc && it->whoFINport != portSrc) || (it->isSameIP && it->whoFINport != portSrc)){
-                                if (it->isPrintable){
+                            if (it->isPrintable){
+                                it->wasAlreadyPrinted = true;
                                 struct timeval endTime;
                                 endTime.tv_sec = header->ts.tv_sec;
                                 endTime.tv_usec = header->ts.tv_usec;
