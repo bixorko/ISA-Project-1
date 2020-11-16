@@ -268,13 +268,11 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
 
  
     while (int returnValue = pcap_next_ex(pcap, &header, &data) >= 0){
-        //printf("%.2x %.2x %.2x\n", data[0], data[1], data[2]);
         struct iphdr *iph = (struct iphdr *)(data  + sizeof(struct ethhdr));
         int header_size = calculateHeaderSize(data, iph);
 
         bool packetAdd = true;
         int offset = header_size;
-        //printf("%.2x %.2x %.2x\n", data[header_size], data[header_size+1], data[header_size+2]);
 
         if (iph->version == 6){
             fillIpsAndPorts6(data, ipSrc, ipDest, portSrc, portDst);
@@ -328,9 +326,11 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                 && (data[header_size+1] == 0x03) \
                 && (data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
             ){ 
-                
+
+                if ((header->caplen-header_size) < 5)
+                    continue;
 				if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
-                        for (auto it = Packets.begin(); it != Packets.end(); it++){
+                    for (auto it = Packets.begin(); it != Packets.end(); it++){
                         if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
                             strcmp(ipSrc->c_str(), it->ipDest.c_str()) == 0) && \
                             (strcmp(ipDest->c_str(), it->ipDest.c_str()) == 0 || \
