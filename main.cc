@@ -53,14 +53,14 @@ int printInterfaces()
     return 0;
 }
 
-int calculateHeaderSize(const u_char *data, struct iphdr *iph)
+int calculateHeaderSize(const u_char *data, struct iphdr *iph, struct tcphdr *tcph)
 {
     int iphdrlen;
     iphdrlen = iph->ihl*4;
     if (iph->version == 6){
         iphdrlen = 40;
     }
-	struct tcphdr *tcph = (struct tcphdr*)(data + iphdrlen + sizeof(struct ethhdr));	
+	*tcph = *(struct tcphdr*)(data + iphdrlen + sizeof(struct ethhdr));
 	int header_size = sizeof(struct ethhdr) + iphdrlen + tcph->doff*4;
     
     return header_size;
@@ -265,11 +265,12 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
     const u_char *data;
 
     list<Packet> Packets;
+    struct tcphdr *tcph = new struct tcphdr;
 
  
     while (int returnValue = pcap_next_ex(pcap, &header, &data) >= 0){
         struct iphdr *iph = (struct iphdr *)(data  + sizeof(struct ethhdr));
-        int header_size = calculateHeaderSize(data, iph);
+        int header_size = calculateHeaderSize(data, iph, tcph);
 
         bool packetAdd = true;
         int offset = header_size;
@@ -329,6 +330,7 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
 
                 if ((header->caplen-header_size) < 5)
                     continue;
+
 				if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
                     for (auto it = Packets.begin(); it != Packets.end(); it++){
                         if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
@@ -445,7 +447,7 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                 }
             }
 
-            if((data[47] == 0x14 || data[47] == 0x04) || ((data[67] == 0x14 || data[67] == 0x04) && iph->version == 6 && data[20] == 0x06)){
+            if(tcph->rst == 1){
                 for (auto it = Packets.begin(); it != Packets.end(); it++){
                     if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
                         strcmp(ipSrc->c_str(), it->ipDest.c_str()) == 0) && \
@@ -471,7 +473,7 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                 }
             }
 
-            if((data[47] == 0x19 || data[47] == 0x11) || (data[67] == 0x11 && iph->version == 6 && data[20] == 0x06)){
+            if(tcph->fin == 1){
                 for (auto it = Packets.begin(); it != Packets.end(); it++){
                     if (((strcmp(ipSrc->c_str(), it->ipSrc.c_str()) == 0 || \
                         strcmp(ipSrc->c_str(), it->ipDest.c_str()) == 0) && \
@@ -509,6 +511,8 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
             }
         }
     }
+    delete(tcph);
+    pcap_close(pcap);
 }
 
 list<Packet> Packets;
@@ -528,7 +532,8 @@ list<Packet> Packets;
 void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *data)
 {
     struct iphdr *iph = (struct iphdr *)(data  + sizeof(struct ethhdr));
-    int header_size = calculateHeaderSize(data, iph);
+    struct tcphdr *tcph = new struct tcphdr;
+    int header_size = calculateHeaderSize(data, iph, tcph);
 
     bool packetAdd = true;
     int offset = header_size;
@@ -552,79 +557,79 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
 
     if (controlTCP){
         for (auto it = Packets.begin(); it != Packets.end(); it++){
-                if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
-                    strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
-                    (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
-                    strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
-                    \
-                    ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
-                    strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
-                    (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
-                    strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
-                {
-                    it->packets++;
-                    packetAdd = false;
-                }
+            if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                \
+                ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+            {
+                it->packets++;
+                packetAdd = false;
             }
+        }
 
-            if (packetAdd || Packets.empty()){
-                Packet packet;
-                packet.ipSrc = ipSrc;
-                packet.ipDest = ipDest;
-                packet.portSrc = portSrc;
-                packet.portDst = portDst;  
+        if (packetAdd || Packets.empty()){
+            Packet packet;
+            packet.ipSrc = ipSrc;
+            packet.ipDest = ipDest;
+            packet.portSrc = portSrc;
+            packet.portDst = portDst;  
 
-                if (strcmp(ipSrc.c_str(), ipDest.c_str()) == 0){
-                    packet.isSameIP = true;
-                }
-                packet.packets = 1;                  
-                packet.dateSeconds = header->ts.tv_sec;
-                packet.miliSeconds = header->ts.tv_usec;
-                packet.startTime.tv_sec = header->ts.tv_sec;
-                packet.startTime.tv_usec = header->ts.tv_usec;
-                Packets.push_back(packet);
+            if (strcmp(ipSrc.c_str(), ipDest.c_str()) == 0){
+                packet.isSameIP = true;
             }
+            packet.packets = 1;                  
+            packet.dateSeconds = header->ts.tv_sec;
+            packet.miliSeconds = header->ts.tv_usec;
+            packet.startTime.tv_sec = header->ts.tv_sec;
+            packet.startTime.tv_usec = header->ts.tv_usec;
+            Packets.push_back(packet);
+        }
 
         if(    (data[header_size] == 0x16 || data[header_size] == 0x17 || data[header_size] == 0x14 || data[header_size] == 0x15) \
             && (data[header_size+1] == 0x03) \
             && (data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
         ){ 
 			if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
-                    for (auto it = Packets.begin(); it != Packets.end(); it++){
-                        if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
-                            strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
-                            (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
-                            strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
-                            \
-                            ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
-                            strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
-                            (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
-                            strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
-                        {
-                            it->wasHello = true;
-                            it->sniRet = calculateSNI(data, header_size+43).c_str(); //skip to session ID Length
-                        }
+                for (auto it = Packets.begin(); it != Packets.end(); it++){
+                    if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                        strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                        (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                        strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                        \
+                        ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                        strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                        (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                        strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                    {
+                        it->wasHello = true;
+                        it->sniRet = calculateSNI(data, header_size+43).c_str(); //skip to session ID Length
                     }
+                }
 			}
 
             if(data[header_size] == 0x16 && data[header_size+5] == 0x02){
-                    for (auto it = Packets.begin(); it != Packets.end(); it++){
-                        if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
-                            strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
-                            (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
-                            strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
-                            \
-                            ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
-                            strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
-                            (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
-                            strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
-                        {
-                            if (it->wasHello){
-                                it->isPrintable = true;
-                            }
+                for (auto it = Packets.begin(); it != Packets.end(); it++){
+                    if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                        strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                        (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                        strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                        \
+                        ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                        strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                        (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                        strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                    {
+                        if (it->wasHello){
+                            it->isPrintable = true;
                         }
                     }
-				}
+                }
+			}
 
             for (auto it = Packets.begin(); it != Packets.end(); it++){
                 if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
@@ -706,33 +711,33 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
             }
         }
 
-        if((data[47] == 0x14 || data[47] == 0x04) || ((data[67] == 0x14 || data[67] == 0x04) && iph->version == 6 && data[20] == 0x06)){
-                for (auto it = Packets.begin(); it != Packets.end(); it++){
-                    if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
-                        strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
-                        (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
-                        strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
-                        \
-                        ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
-                        strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
-                        (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
-                        strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
-                    {
-                        if (it->isPrintable){
-                            struct timeval endTime;
-                            endTime.tv_sec = header->ts.tv_sec;
-                            endTime.tv_usec = header->ts.tv_usec;
-                            if (it->bytes != 0 && it->wasAlreadyPrinted == false){
-                                printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, \
-                                            it->dateSeconds, it->miliSeconds, it->startTime, endTime);
-                            }
+        if(tcph->rst){
+            for (auto it = Packets.begin(); it != Packets.end(); it++){
+                if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
+                    strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
+                    (strcmp(ipDest.c_str(), it->ipDest.c_str()) == 0 || \
+                    strcmp(ipDest.c_str(), it->ipSrc.c_str()) == 0)) && \
+                    \
+                    ((strcmp(portSrc.c_str(), it->portSrc.c_str()) == 0 || \
+                    strcmp(portSrc.c_str(), it->portDst.c_str()) == 0) && \
+                    (strcmp(portDst.c_str(), it->portDst.c_str()) == 0 || \
+                    strcmp(portDst.c_str(), it->portSrc.c_str()) == 0)))
+                {
+                    if (it->isPrintable){
+                        struct timeval endTime;
+                        endTime.tv_sec = header->ts.tv_sec;
+                        endTime.tv_usec = header->ts.tv_usec;
+                        if (it->bytes != 0 && it->wasAlreadyPrinted == false){
+                            printPacket(&it->bytes, &it->packets, &it->sniRet, &it->ipSrc, &it->ipDest, &it->portSrc, \
+                                        it->dateSeconds, it->miliSeconds, it->startTime, endTime);
                         }
-                        it->wasAlreadyPrinted = true;
                     }
+                    it->wasAlreadyPrinted = true;
                 }
             }
+        }
 
-        if((data[47] == 0x19 || data[47] == 0x11) || (data[67] == 0x11 && iph->version == 6 && data[20] == 0x06)){
+        if(tcph->fin){
             for (auto it = Packets.begin(); it != Packets.end(); it++){
                 if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
                     strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
@@ -769,6 +774,7 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
             }
         }
     }
+    delete(tcph);
 }
 
 /**
