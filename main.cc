@@ -337,7 +337,7 @@ void loadFile(string fileName, int *bytes, int *packets, string *sni, string *ip
                             strcmp(ipSrc->c_str(), it->ipDest.c_str()) == 0) && \
                             (strcmp(ipDest->c_str(), it->ipDest.c_str()) == 0 || \
                             strcmp(ipDest->c_str(), it->ipSrc.c_str()) == 0)) && \
-                            \  
+                            \
                             ((strcmp(portSrc->c_str(), it->portSrc.c_str()) == 0 || \
                             strcmp(portSrc->c_str(), it->portDst.c_str()) == 0) && \
                             (strcmp(portDst->c_str(), it->portDst.c_str()) == 0 || \
