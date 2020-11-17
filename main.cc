@@ -594,6 +594,10 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
             && (data[header_size+1] == 0x03) \
             && (data[header_size+2] == 0x01 || data[header_size+2] == 0x02 || data[header_size+2] == 0x03 || data[header_size+2] == 0x04)
         ){ 
+
+            if ((header->caplen-header_size) < 5)
+                    return;
+                
 			if(data[header_size] == 0x16 && data[header_size+5] == 0x01){
                 for (auto it = Packets.begin(); it != Packets.end(); it++){
                     if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
@@ -711,7 +715,7 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
             }
         }
 
-        if(tcph->rst){
+        if(tcph->rst == 1){
             for (auto it = Packets.begin(); it != Packets.end(); it++){
                 if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
                     strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
@@ -737,7 +741,7 @@ void gotPacket(u_char *args, const struct pcap_pkthdr *header, const u_char *dat
             }
         }
 
-        if(tcph->fin){
+        if(tcph->fin == 1){
             for (auto it = Packets.begin(); it != Packets.end(); it++){
                 if (((strcmp(ipSrc.c_str(), it->ipSrc.c_str()) == 0 || \
                     strcmp(ipSrc.c_str(), it->ipDest.c_str()) == 0) && \
