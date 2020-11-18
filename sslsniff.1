@@ -1,0 +1,31 @@
+.TH man 8 "03 October 2020" "1.0" "sslsniff man page"
+.SH PROLOG
+Tato manualova stranka je sucastou vypracovania projektu z predmetu ISA - Monitoring SSL spojeni. 
+Detaily mojej implementacie (napr. kedy je spojenie povazovane za ukoncene a ktore pakety su ratane do poctu paketov) su popisane v sekcii 
+.B DESCRIPTION.
+.SH NAME
+.B sslsniff 
+\- program spracuje subor vo formate .pcapng a zobrazi informacie o SSL spojeni
+.SH SYNOPSIS
+.B sslsniff
+\fB\-r\fR \fIFILE\fR | \fB\-i\fR \fIINTERFACE\fR
+.SH EXAMPLES
+.B sslsniff
+\fB\-r\fR \fIfile.pcapng\fR 
+.B sslsniff
+\fB\-i\fR \fIwlp3s0\fR
+.SH DESCRIPTION
+.B sslsniff
+je program, ktory spracuje subor vo formate .pcapng (ak bol zadany parameter [\fB\-r\fR \fIFILE\fR]) a zobrazi informacie o SSL spojeni. 
+Alternativne je moznost spustit
+program s parametrom [\fB\-i\fR \fIINTERFACE\fR] kde pride k live zachytavaniu a monitoringu prave prebiehajucich SSL spojeni.
+V pripade, ze je program spusteny so zlymi vstupnymi parametrami (napr. su zadany obidva parametre sucasne / nie je zadany ziadny parameter) program sa ukonci s prislusnou chybovou hlaskou a dojde k ukonceniu s prislusnym error kodom.
+Implementacia povazuje za validne spojenia take, ktore na zaciatku kazdej komunikacie obsahuju obidva typy handshakov tzn. Client Hello nasledovany Server Hello. 
+.B Celkovy pocet TCP packetov 
+daneho spojenia sa pocita od prveho prichodu potrebnych flagov a tento pocet je ukonceny prichodom druheho FINu (resp. po prichode FIN flagu z oboch stran komunikacie - zabranenie bugu kedy dojde k znovuposlaniu FINu).
+\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR
+.B ZHRNUTIE DOLEZITYCH CASTI IMPLEMENTACIE PRE HODNOTENIE:
+\fB\-\-\-\fR \fIrata sa s tym, ze prebehol kompletny handshake (aj client aj server hello)\fR 
+\fB\-\-\-\fR \fIrata sa s tym, ze spojenie konci po 2x FIN (fin flag z oboch stran) a aj tieto FINy su zapocitane do paketov\fR \fB\-\-\-\fR \fIrata sa s verziami TLS 1.0 a vyssie\fR 
+.SH AUTHOR
+Peter Vinarcik (xvinar00@stud.fit.vutbr.cz)
