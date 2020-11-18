@@ -12,7 +12,7 @@ Detaily mojej implementacie (napr. kedy je spojenie povazovane za ukoncene a kto
 .SH EXAMPLES
 .B sslsniff
 \fB\-r\fR \fIfile.pcapng\fR 
-.B sslsniff
+.B sudo sslsniff
 \fB\-i\fR \fIwlp3s0\fR
 .SH DESCRIPTION
 .B sslsniff
@@ -20,12 +20,17 @@ je program, ktory spracuje subor vo formate .pcapng (ak bol zadany parameter [\f
 Alternativne je moznost spustit
 program s parametrom [\fB\-i\fR \fIINTERFACE\fR] kde pride k live zachytavaniu a monitoringu prave prebiehajucich SSL spojeni.
 V pripade, ze je program spusteny so zlymi vstupnymi parametrami (napr. su zadany obidva parametre sucasne / nie je zadany ziadny parameter) program sa ukonci s prislusnou chybovou hlaskou a dojde k ukonceniu s prislusnym error kodom.
+.B V pripade live zachytavania musi byt program bezpodmienecne pusteny s prikazom sudo, resp. rootovskymi opravneniami, nakolko dochadza k odchytavaniu komunikacie na danom rozhrani!
+.B Implementacia tiez neocakava a nepodporuje VLAN!
 Implementacia povazuje za validne spojenia take, ktore na zaciatku kazdej komunikacie obsahuju obidva typy handshakov tzn. Client Hello nasledovany Server Hello. 
 .B Celkovy pocet TCP packetov 
 daneho spojenia sa pocita od prveho prichodu potrebnych flagov a tento pocet je ukonceny prichodom druheho FINu (resp. po prichode FIN flagu z oboch stran komunikacie - zabranenie bugu kedy dojde k znovuposlaniu FINu).
+.B Mozne ukoncenie komunikacie
+je okrem uz spominaneho prichodu obidvoch FINov aj moznost, kedy v komunikacii pride k zachyteniu RST Flagu, ktory ma za nasledok okamzite ukoncenie spojenia a nasledne prebehne vypisanie tohto spojenia na stdout v pripade, ze samozrejme prebehol validny handshake.
 \fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR\fB\-\-\-\fR
 .B ZHRNUTIE DOLEZITYCH CASTI IMPLEMENTACIE PRE HODNOTENIE:
 \fB\-\-\-\fR \fIrata sa s tym, ze prebehol kompletny handshake (aj client aj server hello)\fR 
 \fB\-\-\-\fR \fIrata sa s tym, ze spojenie konci po 2x FIN (fin flag z oboch stran) a aj tieto FINy su zapocitane do paketov\fR \fB\-\-\-\fR \fIrata sa s verziami TLS 1.0 a vyssie\fR 
+\fB\-\-\-\fR \fIV PRIPADE, ZE DOJDE K PRICHODU RST FLAGU, SPOJENIE JE AUTOMATICKY VYPISANE (v pripade, ze prebehol kompletny handshake (aj client aj server hello).\fR \fB\-\-\-\fR 
 .SH AUTHOR
 Peter Vinarcik (xvinar00@stud.fit.vutbr.cz)
